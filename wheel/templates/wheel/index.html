@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Колесо Фортуны</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<style>
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #f0f4f8, #dbeafe);
+    color: #0f172a;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.history-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.result {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+
+.main {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 40px;
+    padding: 40px;
+}
+
+.card {
+    background: white;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+}
+
+input, button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 12px;
+    border-radius: 12px;
+    border: 1px solid #cbd5f5;
+    font-size: 16px;
+}
+
+button {
+    background: #ef4444;
+    color: white;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+}
+
+.wheel-wrapper {
+    position: relative;
+    width: 520px;
+    height: 520px;
+    margin: auto;
+}
+
+canvas {
+    width: 520px;
+    height: 520px;
+}
+
+.center-btn {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    background: #ef4444;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    box-shadow: 0 10px 20px rgba(239,68,68,0.5);
+}
+
+/* Стрелка справа — смайл 👈🏼 */
+.arrow-right {
+    position: absolute;
+    top: 50%;
+    right: -40px;
+    font-size: 40px;
+    transform: translateY(-50%);
+}
+
+/* История */
+.history {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 360px;
+    height: 100%;
+    background: white;
+    box-shadow: -20px 0 40px rgba(0,0,0,0.1);
+    padding: 20px;
+    overflow-y: auto;
+    color: black;
+    transform: translateX(100%);
+    transition: transform 0.3s;
+}
+.history.open {
+    transform: translateX(0);
+}
+
+.history ul {
+    padding-left: 10px;
+}
+</style>
+</head>
+
+<body>
+<div class="header">
+    🎡 Колесо фортуны
+    <button class="history-btn" onclick="toggleHistory()">📜 История</button>
+</div>
+
+<div class="result" id="result">Нажми на красный круг</div>
+
+<div class="main">
+<div class="card">
+    <h3>Добавить вариант</h3>
+    <input id="optionInput" placeholder="Например: Пицца">
+    <button onclick="addOption()">Добавить</button>
+    <ul>
+        {% for o in options %}
+        <li>{{ o.text }}</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div class="wheel-wrapper">
+    <canvas id="wheel" width="520" height="520"></canvas>
+    <div class="center-btn" onclick="spin()"></div>
+    <div class="arrow-right">👈🏼</div>
+</div>
+</div>
+
+<div class="history" id="history">
+    <h3>История</h3>
+    <ul>
+        {% for h in history %}
+        <li style="margin-bottom:16px;">
+            <div style="font-weight:600;">{{ forloop.counter }}) Варианты: {{ h.options_snapshot }}</div>
+            <div style="font-size:20px; margin-left:20px;">🎯: {{ h.result }}</div>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+
+<script>
+let options = [{% for o in options %}"{{ o.text }}",{% endfor %}];
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+let angle = 0;
+
+function drawWheel() {
+    const step = 2 * Math.PI / options.length;
+    ctx.clearRect(0,0,520,520);
+    options.forEach((opt,i)=>{
+        ctx.beginPath();
+        ctx.moveTo(260,260);
+        ctx.arc(260,260,260, angle+i*step, angle+(i+1)*step);
+        ctx.fillStyle = `hsl(${i*60},70%,60%)`;
+        ctx.fill();
+        ctx.save();
+        ctx.translate(260,260);
+        ctx.rotate(angle+i*step+step/2);
+        ctx.fillStyle='#0f172a';
+        ctx.font='20px Inter';
+        ctx.fillText(opt,120,10);
+        ctx.restore();
+    });
+}
+
+drawWheel();
+
+function addOption() {
+    fetch('/api/options/', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text: optionInput.value})
+    }).then(()=>location.reload());
+}
+
+function spin() {
+    fetch('/api/spin/', {method:'POST'})
+    .then(r=>r.json())
+    .then(data=>{
+        const resultIndex = options.findIndex(o=>o===data.result);
+        const step = 2*Math.PI/options.length;
+        const targetAngle = 2*Math.PI*5 + (options.length - resultIndex - 0.5)*step;
+        let current = 0;
+        const speed=0.6;
+        const anim = setInterval(()=>{
+            current+=speed;
+            if(current>=targetAngle){
+                current=targetAngle;
+                clearInterval(anim);
+                document.getElementById('result').innerText='🎉: '+data.result;
+            }
+            angle=current;
+            drawWheel();
+        },16);
+    });
+}
+
+function toggleHistory() {
+    document.getElementById('history').classList.toggle('open');
+}
+</script>
+</body>
+</html>
